@@ -1,6 +1,14 @@
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.remember
+import io.ktor.client.*
+import io.ktor.client.features.json.*
+import io.ktor.client.features.json.serializer.*
+import io.ktor.client.request.*
+import io.ktor.http.*
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.launch
+import kotlinx.serialization.Serializable
 import org.jetbrains.compose.web.attributes.ATarget
 import org.jetbrains.compose.web.attributes.target
 import org.jetbrains.compose.web.css.*
@@ -40,6 +48,10 @@ val URL = listOf(
     "https://zhuanlan.zhihu.com/p/403783330",
     "https://blog.csdn.net/weixin_43392489/article/details/103020632",
 )
+
+val client = HttpClient {
+    install(JsonFeature) { serializer = KotlinxSerializer() }
+}
 
 @Composable
 private fun App() {
@@ -90,16 +102,37 @@ private fun App() {
                 Button(
                     attrs = {
                         onClick {
-                            val index = Random.nextInt(TITLE.size)
+                            val dataIndex = datas.size
+                            val titleIndex = Random.nextInt(TITLE.size)
                             val newData = Data(
-                                TITLE.size,
-                                TITLE[index],
-                                URL[index],
+                                dataIndex,
+                                TITLE[titleIndex],
+                                URL[titleIndex],
                                 1,
                             )
                             datas.add(newData)
 
-                            // tdb: send log request
+                            GlobalScope.launch {
+                                var resultStatus = 3
+                                try {
+                                    client.post<Data>("http://localhost:8080/log") {
+                                        contentType(ContentType.Application.Json)
+                                        body = newData
+                                    }
+                                } catch (e: Exception) {
+                                    resultStatus = 2
+                                    e.printStackTrace()
+                                }
+
+                                datas.removeAt(dataIndex)
+                                val resultData = Data(
+                                    newData.id,
+                                    newData.title,
+                                    newData.url,
+                                    resultStatus,
+                                )
+                                datas.add(dataIndex, resultData)
+                            }
                         }
                     }
                 ) {
@@ -123,7 +156,7 @@ private fun App() {
                     }
                 }
             ) {
-                datas.map {
+                datas.reversed().map {
                     Li {
                         Div(
                             attrs = {
@@ -134,6 +167,7 @@ private fun App() {
 
                                     display(DisplayStyle.Flex)
                                     flexDirection(FlexDirection.Row)
+                                    justifyContent(JustifyContent.Start)
                                     alignItems(AlignItems.Center)
 
                                     border {
@@ -149,7 +183,9 @@ private fun App() {
                             Label(
                                 attrs = {
                                     style {
+                                        width(60.px)
                                         color(it.statusToColor())
+                                        textAlign("center")
                                     }
                                 }
                             ) {
@@ -182,6 +218,7 @@ private fun App() {
     }
 }
 
+@Serializable
 data class Data(
     val id: Int,
     val title: String,
